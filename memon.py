@@ -426,25 +426,10 @@ class MemoryMonitor:
         # Find matching processes
         matching_pids = self.get_processes_by_name(process_name)
         
-        # Get all RSS values from matching processes
-        all_rss = [self.processes[pid].rss for pid in matching_pids if pid in self.processes]
-        
-        if len(all_rss) > 0:
-            # Find the process with maximum RSS
-            self.max_rss = max(all_rss)
-            
-            # Find the process with second maximum RSS
-            # Remove max values and find the next highest
-            filtered_rss = [rss for rss in all_rss if rss != self.max_rss]
-            self.second_max_rss = max(filtered_rss) if filtered_rss else 0
-            
-            # Mark the process with maximum RSS
-            for pid in matching_pids:
-                if pid in self.processes:
-                    if self.processes[pid].rss == self.max_rss:
-                        self.processes[pid].is_max_memory = True
-                    elif self.processes[pid].rss == self.second_max_rss and self.second_max_rss > 0:
-                        self.processes[pid].is_second_max_memory = True
+        # Reset memory flags for all processes
+        for pid in self.processes:
+            self.processes[pid].is_max_memory = False
+            self.processes[pid].is_second_max_memory = False
         
         if not matching_pids:
             if self.no_color:
@@ -499,16 +484,29 @@ class MemoryMonitor:
                     print(f"{Colors.YELLOW}{Colors.BOLD}🎯 Root:{Colors.RESET} [{root_pid}] {root_process.name}")
                     print(f"{Colors.CYAN}{Colors.BOLD}📋 Process Tree:{Colors.RESET}")
                 
+                # Collect all RSS values in this tree and find max and second max
+                all_rss_in_tree = self._collect_all_rss_in_tree(root_process)
+                if len(all_rss_in_tree) > 0:
+                    tree_max_rss = max(all_rss_in_tree)
+                    filtered_rss = [rss for rss in all_rss_in_tree if rss != tree_max_rss]
+                    tree_second_max_rss = max(filtered_rss) if filtered_rss else 0
+                    
+                    # Mark processes with max and second max memory
+                    self._mark_memory_highlights_in_tree(root_process, tree_max_rss, tree_second_max_rss)
+                
                 self.print_tree(root_process)
                 
                 # Print summary
                 process_count = self._count_processes(root_process)
+                total_memory = self._calculate_total_memory(root_process)
                 if self.no_color:
                     print(f"\n📈 Summary:")
                     print(f"   Tree Processes: {process_count}")
+                    print(f"   Total Memory: {self.format_memory(total_memory)}")
                 else:
                     print(f"\n{Colors.CYAN}{Colors.BOLD}📈 Summary:{Colors.RESET}")
                     print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Tree Procs:{Colors.RESET} {process_count}")
+                    print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Total Memory:{Colors.RESET} {self.get_colored_memory_str(total_memory)}")
             else:
                 if self.no_color:
                     print(f"❌ Could not build process tree for PID {root_pid}")
@@ -523,6 +521,30 @@ class MemoryMonitor:
         for child in root.children:
             count += self._count_processes(child)
         return count
+    
+    def _calculate_total_memory(self, root: ProcessInfo) -> int:
+        """Calculate total RSS memory for a process tree"""
+        total_memory = root.rss  # Root's memory
+        for child in root.children:
+            total_memory += self._calculate_total_memory(child)
+        return total_memory
+    
+    def _collect_all_rss_in_tree(self, root: ProcessInfo) -> List[int]:
+        """Collect all RSS values from processes in the tree"""
+        rss_values = [root.rss]  # Root's RSS
+        for child in root.children:
+            rss_values.extend(self._collect_all_rss_in_tree(child))
+        return rss_values
+    
+    def _mark_memory_highlights_in_tree(self, root: ProcessInfo, max_rss: int, second_max_rss: int):
+        """Mark processes with max and second max memory in the tree"""
+        if root.rss == max_rss:
+            root.is_max_memory = True
+        elif root.rss == second_max_rss and second_max_rss > 0:
+            root.is_second_max_memory = True
+        
+        for child in root.children:
+            self._mark_memory_highlights_in_tree(child, max_rss, second_max_rss)
 
 
 def main():
