@@ -507,7 +507,7 @@ class MemoryMonitor:
                     tree_second_max_rss = max(filtered_rss) if filtered_rss else 0
                     
                     # Find third max
-                    if len(filtered_rss) > 1:
+                    if len(filtered_rss) > 0:
                         third_filtered_rss = [rss for rss in filtered_rss if rss != tree_second_max_rss]
                         tree_third_max_rss = max(third_filtered_rss) if third_filtered_rss else 0
                     else:
