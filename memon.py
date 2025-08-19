@@ -10,6 +10,7 @@ import sys
 import re
 import platform
 import os
+import time
 from typing import Dict, List, Tuple, Optional
 
 
@@ -621,6 +622,7 @@ def main():
     parser.add_argument("process_name", help="Name of the process to analyze")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     parser.add_argument("--no-color", action="store_true", help="Disable colored output")
+    parser.add_argument("-t", "--watch", type=int, metavar="SECONDS", help="Watch mode - continuously update every N seconds")
     
     args = parser.parse_args()
     
@@ -628,9 +630,44 @@ def main():
     monitor = MemoryMonitor(no_color=args.no_color)
     
     try:
-        success = monitor.analyze_process_tree(args.process_name)
-        if not success:
-            sys.exit(1)
+        if args.watch:
+            # Watch mode - continuously update
+            if args.watch <= 0:
+                print("Watch interval must be greater than 0")
+                sys.exit(1)
+            
+            print(f"Starting watch mode - updating every {args.watch} seconds (Press Ctrl+C to stop)")
+            time.sleep(2)  # Give user time to read the message
+            
+            while True:
+                # Clear screen for better display
+                if not monitor.no_color:
+                    print('\033[2J\033[H', end='')  # ANSI clear screen and move cursor to top
+                else:
+                    # Fallback for no-color mode
+                    print('\n' * 50)  # Print newlines to simulate clearing
+                
+                # Add timestamp
+                timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+                if monitor.no_color:
+                    print(f"🕒 {timestamp}")
+                    print(f"🔄 Updating every {args.watch} seconds")
+                    print("=" * 60)
+                else:
+                    print(f"{Colors.CYAN}{Colors.BOLD}🕒 {timestamp}{Colors.RESET}")
+                    print(f"{Colors.YELLOW}{Colors.BOLD}🔄 Updating every {args.watch} seconds{Colors.RESET}")
+                    print(f"{Colors.YELLOW}{Colors.BOLD}{'=' * 60}{Colors.RESET}")
+                
+                # Run analysis
+                success = monitor.analyze_process_tree(args.process_name)
+                
+                # Wait for next iteration
+                time.sleep(args.watch)
+        else:
+            # Single run mode
+            success = monitor.analyze_process_tree(args.process_name)
+            if not success:
+                sys.exit(1)
     except KeyboardInterrupt:
         if monitor.no_color:
             print("\n🛑 Analysis interrupted by user")
