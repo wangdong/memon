@@ -521,14 +521,39 @@ class MemoryMonitor:
                 # Print summary
                 process_count = self._count_processes(root_process)
                 total_memory = self._calculate_total_memory(root_process)
+                top_processes = self._collect_top_memory_processes_with_percentages(root_process, total_memory)
+                
                 if self.no_color:
                     print(f"\n📈 Summary:")
                     print(f"   Tree Processes: {process_count}")
                     print(f"   Total Memory: {self.format_memory(total_memory)}")
+                    # Print top 3 memory processes with percentages
+                    for i, (process, percentage) in enumerate(top_processes):
+                        rank = i + 1
+                        emoji = "🥇" if rank == 1 else "🥈" if rank == 2 else "🥉"
+                        print(f"   {emoji} Top {rank}: [{process.pid}] {process.name} - {self.format_memory(process.rss)} ({percentage:.1f}%)")
+                    
+                    # Calculate and print combined percentage of top 3
+                    if top_processes:
+                        combined_percentage = sum(percentage for _, percentage in top_processes)
+                        combined_memory = sum(process.rss for process, _ in top_processes)
+                        print(f"   📊 Top 3 Combined: {self.format_memory(combined_memory)} ({combined_percentage:.1f}%)")
                 else:
                     print(f"\n{Colors.CYAN}{Colors.BOLD}📈 Summary:{Colors.RESET}")
                     print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Tree Procs:{Colors.RESET} {process_count}")
                     print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Total Memory:{Colors.RESET} {self.get_colored_memory_str(total_memory)}")
+                    # Print top 3 memory processes with percentages
+                    for i, (process, percentage) in enumerate(top_processes):
+                        rank = i + 1
+                        emoji = "🥇" if rank == 1 else "🥈" if rank == 2 else "🥉"
+                        color = Colors.BG_RED + Colors.WHITE + Colors.BOLD if rank == 1 else Colors.BG_MAGENTA + Colors.WHITE + Colors.BOLD if rank == 2 else Colors.BG_CYAN + Colors.BLACK + Colors.BOLD
+                        print(f"   {color}{emoji} Top {rank}:{Colors.RESET} [{process.pid}] {process.name} - {self.get_colored_memory_str(process.rss)} ({percentage:.1f}%)")
+                    
+                    # Calculate and print combined percentage of top 3
+                    if top_processes:
+                        combined_percentage = sum(percentage for _, percentage in top_processes)
+                        combined_memory = sum(process.rss for process, _ in top_processes)
+                        print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}📊 Top 3 Combined:{Colors.RESET} {self.get_colored_memory_str(combined_memory)} ({combined_percentage:.1f}%)")
             else:
                 if self.no_color:
                     print(f"❌ Could not build process tree for PID {root_pid}")
@@ -557,6 +582,31 @@ class MemoryMonitor:
         for child in root.children:
             rss_values.extend(self._collect_all_rss_in_tree(child))
         return rss_values
+    
+    def _collect_top_memory_processes_with_percentages(self, root: ProcessInfo, total_memory: int) -> List[Tuple[ProcessInfo, float]]:
+        """Collect top three memory processes with their percentages"""
+        all_processes = []
+        self._collect_all_processes_in_tree(root, all_processes)
+        
+        # Sort by RSS in descending order
+        all_processes.sort(key=lambda p: p.rss, reverse=True)
+        
+        # Get top three processes with percentages
+        top_processes = []
+        for i, process in enumerate(all_processes[:3]):
+            if total_memory > 0:
+                percentage = (process.rss / total_memory) * 100
+            else:
+                percentage = 0.0
+            top_processes.append((process, percentage))
+        
+        return top_processes
+    
+    def _collect_all_processes_in_tree(self, root: ProcessInfo, processes: List[ProcessInfo]):
+        """Collect all processes in the tree"""
+        processes.append(root)
+        for child in root.children:
+            self._collect_all_processes_in_tree(child, processes)
     
     def _mark_memory_highlights_in_tree(self, root: ProcessInfo, max_rss: int, second_max_rss: int, third_max_rss: int = 0):
         """Mark processes with max, second max, and third max memory in the tree"""
