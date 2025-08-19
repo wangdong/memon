@@ -387,13 +387,19 @@ class MemoryMonitor:
             return memory_str
         return f"{color}{memory_str}{Colors.RESET}"
     
-    def print_tree(self, root: ProcessInfo, level: int = 0, is_last: bool = False):
+    def print_tree(self, root: ProcessInfo, level: int = 0, is_last: bool = False, total_memory: int = 0):
         """Print process tree with memory information"""
         if root is None:
             return
             
         # Format the current node with colors
         memory_str = self.get_colored_memory_str(root.rss, root.is_max_memory, root.is_second_max_memory, root.is_third_max_memory)
+        
+        # Calculate and format overall percentage if total_memory is provided
+        percentage_str = ""
+        if total_memory > 0:
+            percentage = (root.rss / total_memory) * 100
+            percentage_str = f" ({percentage:.1f}%)"
         
         # Create colored tree structure
         tree_prefix = ""
@@ -424,11 +430,11 @@ class MemoryMonitor:
             rank_emoji = "🥉"
         
         # Print current process with colors and ranking emoji
-        print(f"{tree_prefix}{pid_color}[{root.pid}]{Colors.RESET if not self.no_color else ''} {name_color}{root.name}{Colors.RESET if not self.no_color else ''} ({rss_label} {memory_str}{rank_emoji})")
+        print(f"{tree_prefix}{pid_color}[{root.pid}]{Colors.RESET if not self.no_color else ''} {name_color}{root.name}{Colors.RESET if not self.no_color else ''} ({rss_label} {memory_str}{rank_emoji}{percentage_str})")
         
         # Print children
         for i, child in enumerate(root.children):
-            self.print_tree(child, level + 1, i == len(root.children) - 1)
+            self.print_tree(child, level + 1, i == len(root.children) - 1, total_memory)
     
     def analyze_process_tree(self, process_name: str) -> bool:
         """Main analysis function"""
@@ -501,6 +507,12 @@ class MemoryMonitor:
                 
                 # Collect all RSS values in this tree and find max, second max, and third max
                 all_rss_in_tree = self._collect_all_rss_in_tree(root_process)
+                
+                # Print summary
+                process_count = self._count_processes(root_process)
+                total_memory = self._calculate_total_memory(root_process)
+                
+                # Mark processes with max, second max, and third max memory
                 if len(all_rss_in_tree) > 0:
                     tree_max_rss = max(all_rss_in_tree)
                     filtered_rss = [rss for rss in all_rss_in_tree if rss != tree_max_rss]
@@ -516,44 +528,29 @@ class MemoryMonitor:
                     # Mark processes with max, second max, and third max memory
                     self._mark_memory_highlights_in_tree(root_process, tree_max_rss, tree_second_max_rss, tree_third_max_rss)
                 
-                self.print_tree(root_process)
-                
-                # Print summary
-                process_count = self._count_processes(root_process)
-                total_memory = self._calculate_total_memory(root_process)
+                self.print_tree(root_process, total_memory=total_memory)
                 top_processes = self._collect_top_memory_processes_with_percentages(root_process, total_memory)
                 
                 if self.no_color:
                     print(f"\n📈 Summary:")
                     print(f"   Tree Processes: {process_count}")
                     print(f"   Total Memory: {self.format_memory(total_memory)}")
-                    # Print top 3 memory processes with percentages
-                    for i, (process, percentage) in enumerate(top_processes):
-                        rank = i + 1
-                        emoji = "🥇" if rank == 1 else "🥈" if rank == 2 else "🥉"
-                        print(f"   {emoji} Top {rank}: [{process.pid}] {process.name} - {self.format_memory(process.rss)} ({percentage:.1f}%)")
                     
                     # Calculate and print combined percentage of top 3
                     if top_processes:
                         combined_percentage = sum(percentage for _, percentage in top_processes)
                         combined_memory = sum(process.rss for process, _ in top_processes)
-                        print(f"   📊 Top 3 Combined: {self.format_memory(combined_memory)} ({combined_percentage:.1f}%)")
+                        print(f"   Top 3 Combined: {self.format_memory(combined_memory)} ({combined_percentage:.1f}%)")
                 else:
                     print(f"\n{Colors.CYAN}{Colors.BOLD}📈 Summary:{Colors.RESET}")
                     print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Tree Procs:{Colors.RESET} {process_count}")
                     print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Total Memory:{Colors.RESET} {self.get_colored_memory_str(total_memory)}")
-                    # Print top 3 memory processes with percentages
-                    for i, (process, percentage) in enumerate(top_processes):
-                        rank = i + 1
-                        emoji = "🥇" if rank == 1 else "🥈" if rank == 2 else "🥉"
-                        color = Colors.BG_RED + Colors.WHITE + Colors.BOLD if rank == 1 else Colors.BG_MAGENTA + Colors.WHITE + Colors.BOLD if rank == 2 else Colors.BG_CYAN + Colors.BLACK + Colors.BOLD
-                        print(f"   {color}{emoji} Top {rank}:{Colors.RESET} [{process.pid}] {process.name} - {self.get_colored_memory_str(process.rss)} ({percentage:.1f}%)")
                     
                     # Calculate and print combined percentage of top 3
                     if top_processes:
                         combined_percentage = sum(percentage for _, percentage in top_processes)
                         combined_memory = sum(process.rss for process, _ in top_processes)
-                        print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}📊 Top 3 Combined:{Colors.RESET} {self.get_colored_memory_str(combined_memory)} ({combined_percentage:.1f}%)")
+                        print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Top 3 Combined:{Colors.RESET} {self.get_colored_memory_str(combined_memory)} ({combined_percentage:.1f}%)")
             else:
                 if self.no_color:
                     print(f"❌ Could not build process tree for PID {root_pid}")
