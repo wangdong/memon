@@ -534,23 +534,21 @@ class MemoryMonitor:
                 if self.no_color:
                     print(f"\n📈 Summary:")
                     print(f"   Tree Processes: {process_count}")
-                    print(f"   Total Memory: {self.format_memory(total_memory)}")
-                    
                     # Calculate and print combined percentage of top 3
                     if top_processes:
                         combined_percentage = sum(percentage for _, percentage in top_processes)
                         combined_memory = sum(process.rss for process, _ in top_processes)
-                        print(f"   Top 3 Combined: {self.format_memory(combined_memory)} ({combined_percentage:.1f}%)")
+                        print(f"   Top 3: {self.format_memory(combined_memory)} ({combined_percentage:.1f}%)")
+                    print(f"   Total Memory: {self.format_memory(total_memory)}")
                 else:
                     print(f"\n{Colors.CYAN}{Colors.BOLD}📈 Summary:{Colors.RESET}")
                     print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Tree Procs:{Colors.RESET} {process_count}")
-                    print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Total Memory:{Colors.RESET} {self.get_colored_memory_str(total_memory)}")
-                    
                     # Calculate and print combined percentage of top 3
                     if top_processes:
                         combined_percentage = sum(percentage for _, percentage in top_processes)
                         combined_memory = sum(process.rss for process, _ in top_processes)
-                        print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Top 3 Combined:{Colors.RESET} {self.get_colored_memory_str(combined_memory)} ({combined_percentage:.1f}%)")
+                        print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Top 3:{Colors.RESET} {self.get_colored_memory_str(combined_memory)} ({combined_percentage:.1f}%)")
+                    print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Total Memory:{Colors.RESET} {self.get_colored_memory_str(total_memory)}")
             else:
                 if self.no_color:
                     print(f"❌ Could not build process tree for PID {root_pid}")
