@@ -91,16 +91,12 @@ class ProcessInfo:
         self.vsz = vsz  # Virtual Memory Size in bytes
         self.parent_pid = parent_pid
         self.children = []
+        self.is_max_memory = False  # Flag to mark if this process has max memory
+        self.is_second_max_memory = False  # Flag to mark if this process has second max memory
 
     def add_child(self, child: 'ProcessInfo'):
         self.children.append(child)
 
-    def total_rss(self) -> int:
-        """Calculate total RSS including all children"""
-        total = self.rss
-        for child in self.children:
-            total += child.total_rss()
-        return total
 
 
 class MemoryMonitor:
@@ -108,6 +104,8 @@ class MemoryMonitor:
         self.processes: Dict[int, ProcessInfo] = {}
         self.system = platform.system().lower()
         self.no_color = no_color or not Colors.should_use_colors()
+        self.max_rss = 0  # Track maximum RSS across all processes
+        self.second_max_rss = 0  # Track second maximum RSS across all processes
         
     def _execute_command(self, command: str) -> str:
         """Execute a shell command and return output"""
@@ -352,10 +350,18 @@ class MemoryMonitor:
         else:
             return f"{mb:.1f}MB"
     
-    def get_memory_color(self, bytes_value: int) -> str:
+    def get_memory_color(self, bytes_value: int, is_max_memory: bool = False, is_second_max_memory: bool = False) -> str:
         """Get color based on memory usage level"""
         if self.no_color:
             return ""
+        
+        # If this is the process with maximum memory, use red background with white foreground
+        if is_max_memory:
+            return Colors.BG_RED + Colors.WHITE + Colors.BOLD
+        
+        # If this is the process with second maximum memory, use pink background with white foreground
+        if is_second_max_memory:
+            return Colors.BG_MAGENTA + Colors.WHITE + Colors.BOLD
         
         mb = bytes_value / (1024 * 1024)
         
@@ -368,9 +374,9 @@ class MemoryMonitor:
         else:
             return Colors.RED
     
-    def get_colored_memory_str(self, bytes_value: int) -> str:
+    def get_colored_memory_str(self, bytes_value: int, is_max_memory: bool = False, is_second_max_memory: bool = False) -> str:
         """Get memory string with color coding"""
-        color = self.get_memory_color(bytes_value)
+        color = self.get_memory_color(bytes_value, is_max_memory, is_second_max_memory)
         memory_str = self.format_memory(bytes_value)
         if self.no_color:
             return memory_str
@@ -382,8 +388,7 @@ class MemoryMonitor:
             return
             
         # Format the current node with colors
-        memory_str = self.get_colored_memory_str(root.rss)
-        total_memory_str = self.get_colored_memory_str(root.total_rss())
+        memory_str = self.get_colored_memory_str(root.rss, root.is_max_memory, root.is_second_max_memory)
         
         # Create colored tree structure
         tree_prefix = ""
@@ -399,15 +404,13 @@ class MemoryMonitor:
             pid_color = Colors.BRIGHT_BLACK + Colors.BOLD if level == 0 else Colors.BRIGHT_BLUE + Colors.BOLD
             name_color = Colors.BLUE + Colors.BOLD
             rss_label = Colors.BOLD + "RSS:" + Colors.RESET
-            total_label = Colors.BOLD + "Total:" + Colors.RESET
         else:
             pid_color = ""
             name_color = ""
             rss_label = "RSS:"
-            total_label = "Total:"
         
         # Print current process with colors
-        print(f"{tree_prefix}{pid_color}[{root.pid}]{Colors.RESET if not self.no_color else ''} {name_color}{root.name}{Colors.RESET if not self.no_color else ''} ({rss_label} {memory_str}, {total_label} {total_memory_str})")
+        print(f"{tree_prefix}{pid_color}[{root.pid}]{Colors.RESET if not self.no_color else ''} {name_color}{root.name}{Colors.RESET if not self.no_color else ''} ({rss_label} {memory_str})")
         
         # Print children
         for i, child in enumerate(root.children):
@@ -422,6 +425,26 @@ class MemoryMonitor:
         
         # Find matching processes
         matching_pids = self.get_processes_by_name(process_name)
+        
+        # Get all RSS values from matching processes
+        all_rss = [self.processes[pid].rss for pid in matching_pids if pid in self.processes]
+        
+        if len(all_rss) > 0:
+            # Find the process with maximum RSS
+            self.max_rss = max(all_rss)
+            
+            # Find the process with second maximum RSS
+            # Remove max values and find the next highest
+            filtered_rss = [rss for rss in all_rss if rss != self.max_rss]
+            self.second_max_rss = max(filtered_rss) if filtered_rss else 0
+            
+            # Mark the process with maximum RSS
+            for pid in matching_pids:
+                if pid in self.processes:
+                    if self.processes[pid].rss == self.max_rss:
+                        self.processes[pid].is_max_memory = True
+                    elif self.processes[pid].rss == self.second_max_rss and self.second_max_rss > 0:
+                        self.processes[pid].is_second_max_memory = True
         
         if not matching_pids:
             if self.no_color:
@@ -450,13 +473,6 @@ class MemoryMonitor:
         else:
             print(f"{Colors.GREEN}{Colors.BOLD}🌳 Found {len(root_pids)} root process tree(s){Colors.RESET}")
         
-        # Calculate total memory across all processes
-        total_all_memory = sum(self.processes[pid].rss for pid in matching_pids if pid in self.processes)
-        total_colored = self.get_colored_memory_str(total_all_memory)
-        if self.no_color:
-            print(f"💾 Total Memory for all matching processes: {total_colored}")
-        else:
-            print(f"{Colors.MAGENTA}{Colors.BOLD}💾 Total Memory for all matching processes:{Colors.RESET} {total_colored}")
         
         # Analyze each process tree
         for i, root_pid in enumerate(root_pids):
@@ -476,16 +492,11 @@ class MemoryMonitor:
             # Build and print tree
             root_process = self.build_process_tree(root_pid)
             if root_process:
-                total_memory = root_process.total_rss()
-                total_memory_str = self.get_colored_memory_str(total_memory)
-                
                 if self.no_color:
                     print(f"🎯 Root: [{root_pid}] {root_process.name}")
-                    print(f"💾 Tree Memory Usage: {total_memory_str}")
                     print(f"📋 Process Tree:")
                 else:
                     print(f"{Colors.YELLOW}{Colors.BOLD}🎯 Root:{Colors.RESET} [{root_pid}] {root_process.name}")
-                    print(f"{Colors.MAGENTA}{Colors.BOLD}💾 Tree Memory Usage:{Colors.RESET} {total_memory_str}")
                     print(f"{Colors.CYAN}{Colors.BOLD}📋 Process Tree:{Colors.RESET}")
                 
                 self.print_tree(root_process)
@@ -495,15 +506,9 @@ class MemoryMonitor:
                 if self.no_color:
                     print(f"\n📈 Summary:")
                     print(f"   Tree Processes: {process_count}")
-                    print(f"   Tree Memory: {total_memory_str}")
-                    print(f"   Root Memory: {self.get_colored_memory_str(root_process.rss)}")
-                    print(f"   Children Memory: {self.get_colored_memory_str(total_memory - root_process.rss)}")
                 else:
                     print(f"\n{Colors.CYAN}{Colors.BOLD}📈 Summary:{Colors.RESET}")
                     print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Tree Procs:{Colors.RESET} {process_count}")
-                    print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Tree Mem:{Colors.RESET} {total_memory_str}")
-                    print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Root Mem:{Colors.RESET} {self.get_colored_memory_str(root_process.rss)}")
-                    print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Child Mem:{Colors.RESET} {self.get_colored_memory_str(total_memory - root_process.rss)}")
             else:
                 if self.no_color:
                     print(f"❌ Could not build process tree for PID {root_pid}")
