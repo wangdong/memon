@@ -93,6 +93,7 @@ class ProcessInfo:
         self.children = []
         self.is_max_memory = False  # Flag to mark if this process has max memory
         self.is_second_max_memory = False  # Flag to mark if this process has second max memory
+        self.is_third_max_memory = False  # Flag to mark if this process has third max memory
 
     def add_child(self, child: 'ProcessInfo'):
         self.children.append(child)
@@ -350,7 +351,7 @@ class MemoryMonitor:
         else:
             return f"{mb:.1f}MB"
     
-    def get_memory_color(self, bytes_value: int, is_max_memory: bool = False, is_second_max_memory: bool = False) -> str:
+    def get_memory_color(self, bytes_value: int, is_max_memory: bool = False, is_second_max_memory: bool = False, is_third_max_memory: bool = False) -> str:
         """Get color based on memory usage level"""
         if self.no_color:
             return ""
@@ -363,6 +364,10 @@ class MemoryMonitor:
         if is_second_max_memory:
             return Colors.BG_MAGENTA + Colors.WHITE + Colors.BOLD
         
+        # If this is the process with third maximum memory, use cyan background with black foreground
+        if is_third_max_memory:
+            return Colors.BG_CYAN + Colors.BLACK + Colors.BOLD
+        
         mb = bytes_value / (1024 * 1024)
         
         if mb < 10:
@@ -374,9 +379,9 @@ class MemoryMonitor:
         else:
             return Colors.RED
     
-    def get_colored_memory_str(self, bytes_value: int, is_max_memory: bool = False, is_second_max_memory: bool = False) -> str:
+    def get_colored_memory_str(self, bytes_value: int, is_max_memory: bool = False, is_second_max_memory: bool = False, is_third_max_memory: bool = False) -> str:
         """Get memory string with color coding"""
-        color = self.get_memory_color(bytes_value, is_max_memory, is_second_max_memory)
+        color = self.get_memory_color(bytes_value, is_max_memory, is_second_max_memory, is_third_max_memory)
         memory_str = self.format_memory(bytes_value)
         if self.no_color:
             return memory_str
@@ -388,7 +393,7 @@ class MemoryMonitor:
             return
             
         # Format the current node with colors
-        memory_str = self.get_colored_memory_str(root.rss, root.is_max_memory, root.is_second_max_memory)
+        memory_str = self.get_colored_memory_str(root.rss, root.is_max_memory, root.is_second_max_memory, root.is_third_max_memory)
         
         # Create colored tree structure
         tree_prefix = ""
@@ -409,8 +414,17 @@ class MemoryMonitor:
             name_color = ""
             rss_label = "RSS:"
         
-        # Print current process with colors
-        print(f"{tree_prefix}{pid_color}[{root.pid}]{Colors.RESET if not self.no_color else ''} {name_color}{root.name}{Colors.RESET if not self.no_color else ''} ({rss_label} {memory_str})")
+        # Add emoji for memory ranking
+        rank_emoji = ""
+        if root.is_max_memory:
+            rank_emoji = "🥇"
+        elif root.is_second_max_memory:
+            rank_emoji = "🥈"
+        elif root.is_third_max_memory:
+            rank_emoji = "🥉"
+        
+        # Print current process with colors and ranking emoji
+        print(f"{tree_prefix}{pid_color}[{root.pid}]{Colors.RESET if not self.no_color else ''} {name_color}{root.name}{Colors.RESET if not self.no_color else ''} ({rss_label} {memory_str}{rank_emoji})")
         
         # Print children
         for i, child in enumerate(root.children):
@@ -430,6 +444,7 @@ class MemoryMonitor:
         for pid in self.processes:
             self.processes[pid].is_max_memory = False
             self.processes[pid].is_second_max_memory = False
+            self.processes[pid].is_third_max_memory = False
         
         if not matching_pids:
             if self.no_color:
@@ -484,15 +499,22 @@ class MemoryMonitor:
                     print(f"{Colors.YELLOW}{Colors.BOLD}🎯 Root:{Colors.RESET} [{root_pid}] {root_process.name}")
                     print(f"{Colors.CYAN}{Colors.BOLD}📋 Process Tree:{Colors.RESET}")
                 
-                # Collect all RSS values in this tree and find max and second max
+                # Collect all RSS values in this tree and find max, second max, and third max
                 all_rss_in_tree = self._collect_all_rss_in_tree(root_process)
                 if len(all_rss_in_tree) > 0:
                     tree_max_rss = max(all_rss_in_tree)
                     filtered_rss = [rss for rss in all_rss_in_tree if rss != tree_max_rss]
                     tree_second_max_rss = max(filtered_rss) if filtered_rss else 0
                     
-                    # Mark processes with max and second max memory
-                    self._mark_memory_highlights_in_tree(root_process, tree_max_rss, tree_second_max_rss)
+                    # Find third max
+                    if len(filtered_rss) > 1:
+                        third_filtered_rss = [rss for rss in filtered_rss if rss != tree_second_max_rss]
+                        tree_third_max_rss = max(third_filtered_rss) if third_filtered_rss else 0
+                    else:
+                        tree_third_max_rss = 0
+                    
+                    # Mark processes with max, second max, and third max memory
+                    self._mark_memory_highlights_in_tree(root_process, tree_max_rss, tree_second_max_rss, tree_third_max_rss)
                 
                 self.print_tree(root_process)
                 
@@ -536,15 +558,17 @@ class MemoryMonitor:
             rss_values.extend(self._collect_all_rss_in_tree(child))
         return rss_values
     
-    def _mark_memory_highlights_in_tree(self, root: ProcessInfo, max_rss: int, second_max_rss: int):
-        """Mark processes with max and second max memory in the tree"""
+    def _mark_memory_highlights_in_tree(self, root: ProcessInfo, max_rss: int, second_max_rss: int, third_max_rss: int = 0):
+        """Mark processes with max, second max, and third max memory in the tree"""
         if root.rss == max_rss:
             root.is_max_memory = True
         elif root.rss == second_max_rss and second_max_rss > 0:
             root.is_second_max_memory = True
+        elif root.rss == third_max_rss and third_max_rss > 0:
+            root.is_third_max_memory = True
         
         for child in root.children:
-            self._mark_memory_highlights_in_tree(child, max_rss, second_max_rss)
+            self._mark_memory_highlights_in_tree(child, max_rss, second_max_rss, third_max_rss)
 
 
 def main():
