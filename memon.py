@@ -535,6 +535,10 @@ class MemoryMonitor:
                 if self.no_color:
                     print(f"\n📈 Summary:")
                     print(f"   Tree Processes: {process_count}")
+                    # Calculate and print average memory
+                    if process_count > 0:
+                        average_memory = total_memory // process_count
+                        print(f"   Avg Memory: {self.format_memory(average_memory)}")
                     # Calculate and print combined percentage of top 3
                     if top_processes:
                         combined_percentage = sum(percentage for _, percentage in top_processes)
@@ -544,6 +548,10 @@ class MemoryMonitor:
                 else:
                     print(f"\n{Colors.CYAN}{Colors.BOLD}📈 Summary:{Colors.RESET}")
                     print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Tree Procs:{Colors.RESET} {process_count}")
+                    # Calculate and print average memory
+                    if process_count > 0:
+                        average_memory = total_memory // process_count
+                        print(f"   {Colors.BRIGHT_BLACK}{Colors.BOLD}Avg Memory:{Colors.RESET} {self.get_colored_memory_str(average_memory)}")
                     # Calculate and print combined percentage of top 3
                     if top_processes:
                         combined_percentage = sum(percentage for _, percentage in top_processes)
