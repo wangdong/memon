@@ -1,0 +1,2 @@
+[console_scripts]
+memon = memon.main:main
