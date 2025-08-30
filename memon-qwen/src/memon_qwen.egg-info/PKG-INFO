@@ -22,6 +22,7 @@ Classifier: Topic :: System :: Monitoring
 Classifier: Topic :: Utilities
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
+License-File: LICENSE
 Requires-Dist: psutil>=5.9.0
 Requires-Dist: rich>=12.0.0
 Provides-Extra: dev
@@ -30,6 +31,7 @@ Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
 Requires-Dist: black>=22.0.0; extra == "dev"
 Requires-Dist: flake8>=5.0.0; extra == "dev"
 Requires-Dist: mypy>=1.0.0; extra == "dev"
+Dynamic: license-file
 
 # memon-qwen
 
@@ -59,7 +61,22 @@ pip install memon-qwen
 ```bash
 git clone https://github.com/yourusername/memon-qwen.git
 cd memon-qwen
-pip install .
+./install.sh
+```
+
+This will create a virtual environment and install all dependencies.
+
+To use the tool after installation:
+
+```bash
+# Activate the virtual environment
+source venv/bin/activate
+
+# Run memon
+memon <process_name>
+
+# Deactivate when done
+deactivate
 ```
 
 ## Usage
@@ -97,7 +114,8 @@ memon Terminal -v
 ```bash
 git clone https://github.com/yourusername/memon-qwen.git
 cd memon-qwen
-pip install -e ".[dev]"
+./install.sh
+source venv/bin/activate
 ```
 
 ### Running tests
