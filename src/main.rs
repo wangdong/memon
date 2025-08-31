@@ -2,9 +2,8 @@
 // Analyzes memory usage of a process and its children, displaying as a tree structure
 
 use clap::Parser;
-use std::process::Command;
 use std::collections::HashMap;
-use std::env;
+use sysinfo::System;
 
 // ANSI color codes for cross-platform colored output
 mod colors {
@@ -12,15 +11,16 @@ mod colors {
     pub const RESET: &str = "\x1b[0m";
     
     // Foreground colors
-    pub const WHITE: &str = "\x1b[37m";
-    pub const RED: &str = "\x1b[31m";
     pub const CYAN: &str = "\x1b[36m";
     
-    // Background colors
-    pub const BG_RED: &str = "\x1b[41m";
+    // Background colors - light gray background
+    pub const BG_LIGHT_GRAY: &str = "\x1b[47m";  // Light gray background
     
-    // Styles
-    pub const BOLD: &str = "\x1b[1m";
+    // Foreground colors - dark gray for contrast
+    pub const DARK_GRAY: &str = "\x1b[90m";  // Dark gray foreground
+    
+    // Styles - removed bold for cleaner output
+    // pub const BOLD: &str = "\1b[1m"; // Removed
     
     // Check if colors should be used
     pub fn should_use_colors(no_color_flag: bool) -> bool {
@@ -34,10 +34,10 @@ mod colors {
         true
     }
     
-    // Functions to combine colors
-    pub fn combine_colors(color1: &str, color2: &str) -> String {
-        format!("{}{}", color1, color2)
-    }
+    // Functions to combine colors - removed as no longer used
+    // pub fn combine_colors(color1: &str, color2: &str) -> String {
+    //     format!("{}{}", color1, color2)
+    // }
 }
 
 // Command line arguments
@@ -102,63 +102,36 @@ impl ProcessInfo {
 struct MemoryMonitor {
     processes: HashMap<u32, ProcessInfo>,
     no_color: bool,
+    system: System,
 }
 
 impl MemoryMonitor {
     fn new(no_color: bool) -> Self {
+        let mut system = System::new_all();
+        system.refresh_all();
         MemoryMonitor {
             processes: HashMap::new(),
             no_color,
+            system,
         }
     }
     
-    // Execute a shell command and return output
-    fn execute_command(&self, command: &str) -> Result<String, std::io::Error> {
-        let output = Command::new("sh")
-            .arg("-c")
-            .arg(command)
-            .output()?;
-        
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    }
-    
-    // Get all processes using system commands
+    // Get all processes using sysinfo crate
     fn get_all_processes(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let os_type = env::consts::OS;
-        let output = if os_type == "macos" {
-            self.execute_command("ps -c -eo pid,ppid,comm,rss,vsz")?
-        } else {
-            self.execute_command("ps -eo pid,ppid,command,rss,vsz")?
-        };
+        // Refresh system information
+        self.system.refresh_processes();
         
-        let lines: Vec<&str> = output.lines().collect();
-        // Skip header line
-        for line in lines.iter().skip(1) {
-            if line.trim().is_empty() {
-                continue;
-            }
+        // Clear existing processes to avoid duplicates
+        self.processes.clear();
+        
+        // Iterate through all processes
+        for (pid, process) in self.system.processes() {
+            let pid_value = pid.as_u32();
+            let name = process.name().to_string();
+            let rss = process.memory(); // Already in bytes
+            let ppid = process.parent().map(|p| p.as_u32());
             
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 5 {
-                let pid = parts[0].parse::<u32>()?;
-                let ppid = parts[1].parse::<u32>()?;
-                let rss = parts[parts.len()-2].parse::<u64>()? * 1024; // Convert from KB to bytes
-                
-                // Extract process name
-                let name = if os_type == "macos" {
-                    parts[2].to_string()
-                } else {
-                    // For Linux, the command might contain spaces, so we need to handle it differently
-                    // We'll take everything between ppid and rss as the command
-                    let mut name_parts = Vec::new();
-                    for i in 2..parts.len()-2 {
-                        name_parts.push(parts[i]);
-                    }
-                    name_parts.join(" ")
-                };
-                
-                self.processes.insert(pid, ProcessInfo::new(pid, name, rss, Some(ppid)));
-            }
+            self.processes.insert(pid_value, ProcessInfo::new(pid_value, name, rss, ppid));
         }
         
         Ok(())
@@ -230,12 +203,13 @@ impl MemoryMonitor {
             return String::new();
         }
         
-        // Use red background with white foreground for top 1-3 memory processes
+        // Use dark gray text with light gray background for top 1-3 memory processes
         if is_max_memory || is_second_max_memory || is_third_max_memory {
-            return colors::combine_colors(colors::BG_RED, colors::WHITE);
+            // Dark gray text on light gray background
+            return format!("{}{}", colors::DARK_GRAY, colors::BG_LIGHT_GRAY);
         }
         
-        // Default foreground color for non-trophy processes
+        // No special color for non-trophy processes
         String::new()
     }
     
@@ -265,27 +239,18 @@ impl MemoryMonitor {
         
         // Create compact tree structure
         let tree_prefix = if level > 0 {
-            if !self.no_color {
-                let mut prefix = String::new();
-                for _ in 0..(level - 1) {
-                    prefix.push_str("  ");
-                }
-                prefix.push_str(if is_last { "└─ " } else { "├─ " });
-                prefix
-            } else {
-                let mut prefix = String::new();
-                for _ in 0..(level - 1) {
-                    prefix.push_str("  ");
-                }
-                prefix.push_str(if is_last { "└─ " } else { "├─ " });
-                prefix
+            let mut prefix = String::new();
+            for _ in 0..(level - 1) {
+                prefix.push_str("  ");
             }
+            prefix.push_str(if is_last { "└─ " } else { "├─ " });
+            prefix
         } else {
             String::new()
         };
         
-        // PID coloring
-        let pid_color = if !self.no_color { colors::BOLD } else { "" };
+        // No PID coloring for cleaner output
+        let _pid_color = "";
         
         // Add emoji for memory ranking
         let rank_emoji = if root.is_max_memory {
@@ -306,8 +271,8 @@ impl MemoryMonitor {
         };
 
         // Print process info with 40-character process name
-        println!("{}{}{} {} {}{}", 
-                 tree_prefix, pid_color, root.pid, display_name, memory_str, rank_emoji);
+        println!("{}{} {} {}{}", 
+                 tree_prefix, root.pid, display_name, memory_str, rank_emoji);
         
         // Print children
         let child_count = root.children.len();
@@ -323,8 +288,8 @@ impl MemoryMonitor {
         let search_msg = if self.no_color {
             format!("Searching: {}", process_name)
         } else {
-            format!("{}Searching:{} {}{}", 
-                    colors::BOLD, colors::CYAN, process_name, colors::RESET)
+            format!("Searching:{} {}{}", 
+                    colors::CYAN, process_name, colors::RESET)
         };
         println!("{}", search_msg);
         
@@ -344,8 +309,8 @@ impl MemoryMonitor {
             let not_found_msg = if self.no_color {
                 format!("No processes found matching '{}'", process_name)
             } else {
-                format!("{}{}No processes found matching '{}{}'", 
-                        colors::RED, colors::BOLD, process_name, colors::RESET)
+                format!("No processes found matching '{}'{}", 
+                        process_name, colors::RESET)
             };
             println!("{}", not_found_msg);
             return Ok(false);
@@ -354,8 +319,8 @@ impl MemoryMonitor {
         let found_msg = if self.no_color {
             format!("Found {} procs", matching_pids.len())
         } else {
-            format!("{}Found {} procs{}", 
-                    colors::BOLD, matching_pids.len(), colors::RESET)
+            format!("Found {} procs{}", 
+                    matching_pids.len(), colors::RESET)
         };
         println!("{}", found_msg);
         
@@ -366,7 +331,7 @@ impl MemoryMonitor {
             let no_root_msg = if self.no_color {
                 "No root processes found".to_string()
             } else {
-                format!("{}{}No root processes found{}", colors::RED, colors::BOLD, colors::RESET)
+                "No root processes found".to_string()
             };
             println!("{}", no_root_msg);
             return Ok(false);
@@ -375,8 +340,8 @@ impl MemoryMonitor {
         let root_msg = if self.no_color {
             format!("Found {} trees", root_pids.len())
         } else {
-            format!("{}Found {} trees{}", 
-                    colors::BOLD, root_pids.len(), colors::RESET)
+            format!("Found {} trees{}", 
+                    root_pids.len(), colors::RESET)
         };
         println!("{}", root_msg);
         
@@ -435,16 +400,37 @@ impl MemoryMonitor {
                     0
                 };
                 
-                let avg_memory_str = self.get_colored_memory_str(average_memory, false, false, false);
-                let total_memory_str = self.get_colored_memory_str(total_memory, false, false, false);
+                // For summary, we need to check if this tree contains top 3 memory processes
+                let all_rss_in_tree = self.collect_all_rss_in_tree(&root_process);
+                let tree_max_rss = *all_rss_in_tree.iter().max().unwrap_or(&0);
+                let tree_second_max_rss = if all_rss_in_tree.len() > 1 {
+                    *all_rss_in_tree.iter().filter(|&&rss| rss != tree_max_rss).max().unwrap_or(&0)
+                } else { 0 };
+                let tree_third_max_rss = if all_rss_in_tree.len() > 2 {
+                    *all_rss_in_tree.iter().filter(|&&rss| rss != tree_max_rss && rss != tree_second_max_rss).max().unwrap_or(&0)
+                } else { 0 };
+                
+                let has_top_memory = tree_max_rss > 0 || tree_second_max_rss > 0 || tree_third_max_rss > 0;
+                
+                let avg_memory_str = if has_top_memory {
+                    self.get_colored_memory_str(average_memory, true, true, true)
+                } else {
+                    self.format_memory(average_memory)
+                };
+                let total_memory_str = if has_top_memory {
+                    self.get_colored_memory_str(total_memory, true, true, true)
+                } else {
+                    self.format_memory(total_memory)
+                };
+                
                 let summary = if self.no_color {
                     format!("{} procs | {} avg | {} total", 
                             process_count, 
                             self.format_memory(average_memory), 
                             self.format_memory(total_memory))
                 } else {
-                    format!("{} {} procs | {} avg | {} total", 
-                            colors::BOLD, process_count,
+                    format!("{} procs | {} avg | {} total", 
+                            process_count,
                             avg_memory_str, total_memory_str)
                 };
                 println!("{}", summary);
@@ -452,8 +438,7 @@ impl MemoryMonitor {
                 let error_msg = if self.no_color {
                     format!("Could not build process tree for PID {}", root_pid)
                 } else {
-                    format!("{}{}Could not build process tree for PID {}{}", 
-                            colors::RED, colors::BOLD, root_pid, colors::RESET)
+                    format!("Could not build process tree for PID {}", root_pid)
                 };
                 println!("{}", error_msg);
             }
