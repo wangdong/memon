@@ -12,23 +12,12 @@ mod colors {
     pub const RESET: &str = "\x1b[0m";
     
     // Foreground colors
-    pub const BLACK: &str = "\x1b[30m";
-    pub const RED: &str = "\x1b[31m";
-    pub const GREEN: &str = "\x1b[32m";
-    pub const YELLOW: &str = "\x1b[33m";
-    pub const BLUE: &str = "\x1b[34m";
-    pub const MAGENTA: &str = "\x1b[35m";
-    pub const CYAN: &str = "\x1b[36m";
     pub const WHITE: &str = "\x1b[37m";
-    
-    // Bright foreground colors
-    pub const BRIGHT_BLACK: &str = "\x1b[90m";
-    pub const BRIGHT_BLUE: &str = "\x1b[94m";
+    pub const RED: &str = "\x1b[31m";
+    pub const CYAN: &str = "\x1b[36m";
     
     // Background colors
     pub const BG_RED: &str = "\x1b[41m";
-    pub const BG_MAGENTA: &str = "\x1b[45m";
-    pub const BG_CYAN: &str = "\x1b[46m";
     
     // Styles
     pub const BOLD: &str = "\x1b[1m";
@@ -48,10 +37,6 @@ mod colors {
     // Functions to combine colors
     pub fn combine_colors(color1: &str, color2: &str) -> String {
         format!("{}{}", color1, color2)
-    }
-    
-    pub fn combine_three_colors(color1: &str, color2: &str, color3: &str) -> String {
-        format!("{}{}{}", color1, color2, color3)
     }
 }
 
@@ -240,37 +225,18 @@ impl MemoryMonitor {
     }
     
     // Get color based on memory usage level
-    fn get_memory_color(&self, bytes_value: u64, is_max_memory: bool, is_second_max_memory: bool, is_third_max_memory: bool) -> String {
+    fn get_memory_color(&self, _bytes_value: u64, is_max_memory: bool, is_second_max_memory: bool, is_third_max_memory: bool) -> String {
         if self.no_color {
             return String::new();
         }
         
-        // If this is the process with maximum memory, use red background with white foreground
-        if is_max_memory {
-            return colors::combine_three_colors(colors::BG_RED, colors::WHITE, colors::BOLD);
+        // Use red background with white foreground for top 1-3 memory processes
+        if is_max_memory || is_second_max_memory || is_third_max_memory {
+            return colors::combine_colors(colors::BG_RED, colors::WHITE);
         }
         
-        // If this is the process with second maximum memory, use pink background with white foreground
-        if is_second_max_memory {
-            return colors::combine_three_colors(colors::BG_MAGENTA, colors::WHITE, colors::BOLD);
-        }
-        
-        // If this is the process with third maximum memory, use cyan background with black foreground
-        if is_third_max_memory {
-            return colors::combine_three_colors(colors::BG_CYAN, colors::BLACK, colors::BOLD);
-        }
-        
-        let mb = bytes_value as f64 / (1024.0 * 1024.0);
-        
-        if mb < 10.0 {
-            colors::GREEN.to_string()
-        } else if mb < 100.0 {
-            colors::YELLOW.to_string()
-        } else if mb < 500.0 {
-            colors::MAGENTA.to_string()
-        } else {
-            colors::RED.to_string()
-        }
+        // Default foreground color for non-trophy processes
+        String::new()
     }
     
     // Get memory string with color coding
@@ -290,47 +256,36 @@ impl MemoryMonitor {
         let memory_str = self.get_colored_memory_str(root.rss, root.is_max_memory, root.is_second_max_memory, root.is_third_max_memory);
         
         // Calculate and format overall percentage if total_memory is provided
-        let percentage_str = if total_memory > 0 {
+        let _percentage_str = if total_memory > 0 {
             let percentage = (root.rss as f64 / total_memory as f64) * 100.0;
             format!(" ({:.1}%)", percentage)
         } else {
             String::new()
         };
         
-        // Create colored tree structure
+        // Create compact tree structure
         let tree_prefix = if level > 0 {
             if !self.no_color {
                 let mut prefix = String::new();
                 for _ in 0..(level - 1) {
-                    prefix.push_str(&format!("{}{}{}", colors::CYAN, "│   ", colors::RESET));
+                    prefix.push_str("  ");
                 }
-                prefix.push_str(&format!("{}{}{}", colors::CYAN, if is_last { "└── " } else { "├── " }, colors::RESET));
+                prefix.push_str(if is_last { "└─ " } else { "├─ " });
                 prefix
             } else {
                 let mut prefix = String::new();
                 for _ in 0..(level - 1) {
-                    prefix.push_str("│   ");
+                    prefix.push_str("  ");
                 }
-                prefix.push_str(if is_last { "└── " } else { "├── " });
+                prefix.push_str(if is_last { "└─ " } else { "├─ " });
                 prefix
             }
         } else {
             String::new()
         };
         
-        // Color PID based on level
-        let (pid_color, name_color, rss_label) = if !self.no_color {
-            let pid_color = if level == 0 {
-                colors::combine_colors(colors::BRIGHT_BLACK, colors::BOLD)
-            } else {
-                colors::combine_colors(colors::BRIGHT_BLUE, colors::BOLD)
-            };
-            let name_color = colors::combine_colors(colors::BLUE, colors::BOLD);
-            let rss_label = format!("{}{}{}", colors::BOLD, "RSS:", colors::RESET);
-            (pid_color, name_color, rss_label)
-        } else {
-            (String::new(), String::new(), "RSS:".to_string())
-        };
+        // PID coloring
+        let pid_color = if !self.no_color { colors::BOLD } else { "" };
         
         // Add emoji for memory ranking
         let rank_emoji = if root.is_max_memory {
@@ -343,11 +298,16 @@ impl MemoryMonitor {
             ""
         };
         
-        // Print current process with colors and ranking emoji
-        println!("{}{}[{}]{} {}{}{} ({} {}{}{})", 
-                 tree_prefix, pid_color, root.pid, if !self.no_color { colors::RESET } else { "" }, 
-                 name_color, root.name, if !self.no_color { colors::RESET } else { "" }, 
-                 rss_label, memory_str, rank_emoji, percentage_str);
+        // Truncate or pad process name to 40 characters
+        let display_name = if root.name.len() > 40 {
+            format!("{}...", &root.name[..37])
+        } else {
+            format!("{:40}", root.name)
+        };
+
+        // Print process info with 40-character process name
+        println!("{}{}{} {} {}{}", 
+                 tree_prefix, pid_color, root.pid, display_name, memory_str, rank_emoji);
         
         // Print children
         let child_count = root.children.len();
@@ -361,11 +321,10 @@ impl MemoryMonitor {
     // Main analysis function
     fn analyze_process_tree(&mut self, process_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
         let search_msg = if self.no_color {
-            format!("🔍 Searching for processes matching: {}", process_name)
+            format!("Searching: {}", process_name)
         } else {
-            format!("{}{}🔍 Searching for processes matching:{} {}{}{}", 
-                    colors::YELLOW, colors::BOLD, colors::RESET, 
-                    colors::CYAN, process_name, colors::RESET)
+            format!("{}Searching:{} {}{}", 
+                    colors::BOLD, colors::CYAN, process_name, colors::RESET)
         };
         println!("{}", search_msg);
         
@@ -383,9 +342,9 @@ impl MemoryMonitor {
         
         if matching_pids.is_empty() {
             let not_found_msg = if self.no_color {
-                format!("❌ No processes found matching '{}'", process_name)
+                format!("No processes found matching '{}'", process_name)
             } else {
-                format!("{}{}❌ No processes found matching '{}{}'", 
+                format!("{}{}No processes found matching '{}{}'", 
                         colors::RED, colors::BOLD, process_name, colors::RESET)
             };
             println!("{}", not_found_msg);
@@ -393,10 +352,10 @@ impl MemoryMonitor {
         }
         
         let found_msg = if self.no_color {
-            format!("✅ Found {} matching process(es)", matching_pids.len())
+            format!("Found {} procs", matching_pids.len())
         } else {
-            format!("{}{}✅ Found {} matching process(es){}", 
-                    colors::GREEN, colors::BOLD, matching_pids.len(), colors::RESET)
+            format!("{}Found {} procs{}", 
+                    colors::BOLD, matching_pids.len(), colors::RESET)
         };
         println!("{}", found_msg);
         
@@ -405,19 +364,19 @@ impl MemoryMonitor {
         
         if root_pids.is_empty() {
             let no_root_msg = if self.no_color {
-                "❌ No root processes found".to_string()
+                "No root processes found".to_string()
             } else {
-                format!("{}{}❌ No root processes found{}", colors::RED, colors::BOLD, colors::RESET)
+                format!("{}{}No root processes found{}", colors::RED, colors::BOLD, colors::RESET)
             };
             println!("{}", no_root_msg);
             return Ok(false);
         }
         
         let root_msg = if self.no_color {
-            format!("🌳 Found {} root process tree(s)", root_pids.len())
+            format!("Found {} trees", root_pids.len())
         } else {
-            format!("{}{}🌳 Found {} root process tree(s){}", 
-                    colors::GREEN, colors::BOLD, root_pids.len(), colors::RESET)
+            format!("{}Found {} trees{}", 
+                    colors::BOLD, root_pids.len(), colors::RESET)
         };
         println!("{}", root_msg);
         
@@ -427,42 +386,12 @@ impl MemoryMonitor {
                 if self.no_color {
                     println!("\n{}", "=".repeat(60));
                 } else {
-                    println!("\n{}{}{}{}", colors::YELLOW, colors::BOLD, "=".repeat(60), colors::RESET);
+                    println!();
                 }
             }
             
-            let tree_header = if self.no_color {
-                format!("\n📊 Process Tree {} (Root PID: {})", i + 1, root_pid)
-            } else {
-                format!("\n{}{}📊 Process Tree {} (Root PID: {}){}", 
-                        colors::CYAN, colors::BOLD, i + 1, root_pid, colors::RESET)
-            };
-            println!("{}", tree_header);
-            
-            let separator = if self.no_color {
-                "-".repeat(60)
-            } else {
-                format!("{}{}{}{}", colors::YELLOW, colors::BOLD, "-".repeat(60), colors::RESET)
-            };
-            println!("{}", separator);
-            
             // Build and print tree
             if let Some(root_process) = self.build_process_tree(root_pid) {
-                let root_info = if self.no_color {
-                    format!("🎯 Root: [{}] {}", root_pid, root_process.name)
-                } else {
-                    format!("{}{}🎯 Root:{} [{}] {}", 
-                            colors::YELLOW, colors::BOLD, colors::RESET, root_pid, root_process.name)
-                };
-                println!("{}", root_info);
-                
-                let tree_label = if self.no_color {
-                    "📋 Process Tree:".to_string()
-                } else {
-                    format!("{}{}📋 Process Tree:{}", colors::CYAN, colors::BOLD, colors::RESET)
-                };
-                println!("{}", tree_label);
-                
                 // Collect all RSS values in this tree and find max, second max, and third max
                 let all_rss_in_tree = self.collect_all_rss_in_tree(&root_process);
                 
@@ -506,43 +435,24 @@ impl MemoryMonitor {
                     0
                 };
                 
-                let summary_label = if self.no_color {
-                    "\n📈 Summary:".to_string()
-                } else {
-                    format!("\n{}{}📈 Summary:{}", colors::CYAN, colors::BOLD, colors::RESET)
-                };
-                println!("{}", summary_label);
-                
-                let procs_info = if self.no_color {
-                    format!("   Tree Processes: {}", process_count)
-                } else {
-                    format!("   {}{}Tree Procs:{} {}", 
-                            colors::BRIGHT_BLACK, colors::BOLD, colors::RESET, process_count)
-                };
-                println!("{}", procs_info);
-                
                 let avg_memory_str = self.get_colored_memory_str(average_memory, false, false, false);
-                let avg_info = if self.no_color {
-                    format!("   Avg Memory: {}", self.format_memory(average_memory))
-                } else {
-                    format!("   {}{}Avg Memory:{} {}", 
-                            colors::BRIGHT_BLACK, colors::BOLD, colors::RESET, avg_memory_str)
-                };
-                println!("{}", avg_info);
-                
                 let total_memory_str = self.get_colored_memory_str(total_memory, false, false, false);
-                let total_info = if self.no_color {
-                    format!("   Total Memory: {}", self.format_memory(total_memory))
+                let summary = if self.no_color {
+                    format!("{} procs | {} avg | {} total", 
+                            process_count, 
+                            self.format_memory(average_memory), 
+                            self.format_memory(total_memory))
                 } else {
-                    format!("   {}{}Total Memory:{} {}", 
-                            colors::BRIGHT_BLACK, colors::BOLD, colors::RESET, total_memory_str)
+                    format!("{} {} procs | {} avg | {} total", 
+                            colors::BOLD, process_count,
+                            avg_memory_str, total_memory_str)
                 };
-                println!("{}", total_info);
+                println!("{}", summary);
             } else {
                 let error_msg = if self.no_color {
-                    format!("❌ Could not build process tree for PID {}", root_pid)
+                    format!("Could not build process tree for PID {}", root_pid)
                 } else {
-                    format!("{}{}❌ Could not build process tree for PID {}{}", 
+                    format!("{}{}Could not build process tree for PID {}{}", 
                             colors::RED, colors::BOLD, root_pid, colors::RESET)
                 };
                 println!("{}", error_msg);
