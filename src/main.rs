@@ -17,7 +17,7 @@ mod colors {
     pub const BG_LIGHT_GRAY: &str = "\x1b[47m";  // Light gray background
     
     // Foreground colors - dark gray for contrast
-    pub const DARK_GRAY: &str = "\x1b[90m";  // Dark gray foreground
+    pub const DARK_GRAY: &str = "\x1b[30m";  // Dark gray foreground
     
     // Styles - removed bold for cleaner output
     // pub const BOLD: &str = "\1b[1m"; // Removed
