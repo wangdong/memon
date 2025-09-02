@@ -11,6 +11,7 @@ A memory monitor tool that analyzes memory usage of processes and their children
 - **Colored Output**: Enhanced readability with color-coded memory usage (configurable)
 - **Smart Process Matching**: Flexible process name matching that handles truncated names and common executable extensions
 - **Process Arguments Display**: Show command line arguments for each process with visual indicators
+- **Dynamic Column Alignment**: Automatic column width adjustment for perfect alignment regardless of PID length
 
 ## Installation
 
@@ -79,19 +80,19 @@ Memon displays process information in a tree structure with the following format
 ### Basic Output (without -v flag)
 
 ```
-PID  PROCESS_NAME                              MEMORY   RANK
+PID    PROCESS_NAME                              MEMORY   RANK
 ├─ 1234 chrome                                   2.5GB   🥇
-├─ 1235 chrome                                   1.8GB   🥈
-└─ 1236 chrome                                   1.2GB   🥉
+├─ 12345 chrome                                   1.8GB   🥈
+└─ 123456 chrome                                   1.2GB   🥉
 ```
 
 ### Enhanced Output (with -v flag)
 
 ```
-   PID  PROCESS_NAME                              MEMORY   COMMAND LINE ARGS
+   PID    PROCESS_NAME                              MEMORY   COMMAND LINE ARGS
 ├─ 🟢1234 chrome                                   2.5GB   🔍/usr/bin/google-chrome --enable-features   🥇
-├─ 🟢1235 chrome                                   1.8GB   🔍/usr/bin/google-chrome --incognito          🥈
-└─ 🟢1236 chrome                                   1.2GB   🔍/usr/bin/google-chrome --new-window          🥉
+├─ 🟢12345 chrome                                   1.8GB   🔍/usr/bin/google-chrome --incognito          🥈
+└─ 🟢123456 chrome                                   1.2GB   🔍/usr/bin/google-chrome --new-window          🥉
 ```
 
 ### Output Elements
@@ -192,4 +193,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Added process startup arguments display with `-v` flag
 - Visual indicators: green dot (🟢) before PID and magnifying glass (🔍) before arguments
 - Changed verbose parameter to use `--verbose` (long option only)
+- Dynamic column alignment for perfect output formatting regardless of PID length
 - Enhanced output formatting for better readability
