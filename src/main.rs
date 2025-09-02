@@ -54,8 +54,12 @@ struct Args {
     process_name: String,
     
     /// Verbose output
-    #[clap(short, long)]
+    #[clap(long)]
     verbose: bool,
+    
+    /// Display process startup arguments
+    #[clap(short = 'v', long = "show-args")]
+    show_args: bool,
     
     /// Disable colored output
     #[clap(long)]
@@ -77,6 +81,7 @@ struct ProcessInfo {
     is_max_memory: bool,
     is_second_max_memory: bool,
     is_third_max_memory: bool,
+    args: Option<String>, // Command line arguments
 }
 
 impl ProcessInfo {
@@ -90,6 +95,7 @@ impl ProcessInfo {
             is_max_memory: false,
             is_second_max_memory: false,
             is_third_max_memory: false,
+            args: None,
         }
     }
     
@@ -102,16 +108,18 @@ impl ProcessInfo {
 struct MemoryMonitor {
     processes: HashMap<u32, ProcessInfo>,
     no_color: bool,
+    show_args: bool,
     system: System,
 }
 
 impl MemoryMonitor {
-    fn new(no_color: bool) -> Self {
+    fn new(no_color: bool, show_args: bool) -> Self {
         let mut system = System::new_all();
         system.refresh_all();
         MemoryMonitor {
             processes: HashMap::new(),
             no_color,
+            show_args,
             system,
         }
     }
@@ -131,7 +139,19 @@ impl MemoryMonitor {
             let rss = process.memory(); // Already in bytes
             let ppid = process.parent().map(|p| p.as_u32());
             
-            self.processes.insert(pid_value, ProcessInfo::new(pid_value, name, rss, ppid));
+            // Get command line arguments if show_args is enabled
+            let args = if self.show_args {
+                process.cmd().join(" ")
+            } else {
+                String::new()
+            };
+            
+            let mut proc_info = ProcessInfo::new(pid_value, name, rss, ppid);
+            if self.show_args && !args.is_empty() {
+                proc_info.args = Some(args);
+            }
+            
+            self.processes.insert(pid_value, proc_info);
         }
         
         Ok(())
@@ -271,8 +291,25 @@ impl MemoryMonitor {
         };
 
         // Print process info with 40-character process name
-        println!("{}{} {} {}{}", 
-                 tree_prefix, root.pid, display_name, memory_str, rank_emoji);
+        print!("{}", tree_prefix);
+        
+        // Display green dot emoji before PID if show_args is enabled
+        if self.show_args {
+            print!("🟢");
+        }
+        
+        print!("{} {} {}", root.pid, display_name, memory_str);
+        
+        // Display arguments if available
+        if let Some(ref args) = root.args {
+            print!(" 🔍{}", args);
+        }
+        
+        // Display the rank emoji
+        print!("{}", rank_emoji);
+        
+        // Print new line
+        println!();
         
         // Print children
         let child_count = root.children.len();
@@ -591,7 +628,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     
     // Create memory monitor and analyze
-    let mut monitor = MemoryMonitor::new(!colors::should_use_colors(args.no_color));
+    let mut monitor = MemoryMonitor::new(!colors::should_use_colors(args.no_color), args.show_args);
     let success = monitor.analyze_process_tree(&args.process_name)?;
     
     if !success {
