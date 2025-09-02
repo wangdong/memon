@@ -82,8 +82,8 @@ Memon displays process information in a tree structure with the following format
 ```
 PID    PROCESS_NAME                              MEMORY   RANK
 ├─ 1234 chrome                                   2.5GB   🥇
-├─ 12345 chrome                                   1.8GB   🥈
-└─ 123456 chrome                                   1.2GB   🥉
+├─ 1235 chrome                                   1.8GB   🥈
+└─ 1236 chrome                                   1.2GB   🥉
 ```
 
 ### Enhanced Output (with -v flag)
@@ -91,8 +91,8 @@ PID    PROCESS_NAME                              MEMORY   RANK
 ```
    PID    PROCESS_NAME                              MEMORY   COMMAND LINE ARGS
 ├─ 🟢1234 chrome                                   2.5GB   🔍/usr/bin/google-chrome --enable-features   🥇
-├─ 🟢12345 chrome                                   1.8GB   🔍/usr/bin/google-chrome --incognito          🥈
-└─ 🟢123456 chrome                                   1.2GB   🔍/usr/bin/google-chrome --new-window          🥉
+├─ 🟢1235 chrome                                   1.8GB   🔍/usr/bin/google-chrome --incognito         🥈
+└─ 🟢1236 chrome                                   1.2GB   🔍/usr/bin/google-chrome --new-window        🥉
 ```
 
 ### Output Elements
