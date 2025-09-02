@@ -244,8 +244,44 @@ impl MemoryMonitor {
         }
     }
     
+    // Calculate column widths for proper alignment
+    fn calculate_column_widths(&self, root: &ProcessInfo) -> (usize, usize) {
+        let mut max_pid_width = 0;
+        let mut max_name_width = 40; // Default minimum width
+        
+        // Collect all processes in the tree
+        let mut all_processes = Vec::new();
+        self.collect_all_processes_in_tree(root, &mut all_processes);
+        
+        // Find maximum PID width and process name width
+        for proc_info in &all_processes {
+            let pid_str = proc_info.pid.to_string();
+            max_pid_width = max_pid_width.max(pid_str.len());
+            
+            // Calculate actual display name width
+            let display_name = if proc_info.name.len() > 40 {
+                format!("{}...", &proc_info.name[..37])
+            } else {
+                proc_info.name.clone()
+            };
+            max_name_width = max_name_width.max(display_name.len());
+        }
+        
+        (max_pid_width, max_name_width)
+    }
+    
+    // Collect all processes in the tree for width calculation
+    fn collect_all_processes_in_tree(&self, root: &ProcessInfo, processes: &mut Vec<ProcessInfo>) {
+        processes.push(root.clone());
+        for &child_pid in &root.children {
+            if let Some(child) = self.processes.get(&child_pid) {
+                self.collect_all_processes_in_tree(child, processes);
+            }
+        }
+    }
+    
     // Print process tree with memory information
-    fn print_tree(&self, root: &ProcessInfo, level: usize, is_last: bool, total_memory: u64) {
+    fn print_tree(&self, root: &ProcessInfo, level: usize, is_last: bool, total_memory: u64, pid_width: usize, name_width: usize) {
         // Format the current node with colors
         let memory_str = self.get_colored_memory_str(root.rss, root.is_max_memory, root.is_second_max_memory, root.is_third_max_memory);
         
@@ -283,14 +319,18 @@ impl MemoryMonitor {
             ""
         };
         
-        // Truncate or pad process name to 40 characters
-        let display_name = if root.name.len() > 40 {
-            format!("{}...", &root.name[..37])
+        // Truncate or pad process name to dynamic width
+        let display_name = if root.name.len() > name_width {
+            if name_width > 3 {
+                format!("{}...", &root.name[..name_width-3])
+            } else {
+                "...".to_string()
+            }
         } else {
-            format!("{:40}", root.name)
+            format!("{:width$}", root.name, width = name_width)
         };
 
-        // Print process info with 40-character process name
+        // Print process info with dynamic column widths
         print!("{}", tree_prefix);
         
         // Display green dot emoji before PID if show_args is enabled
@@ -298,7 +338,7 @@ impl MemoryMonitor {
             print!("🟢");
         }
         
-        print!("{} {} {}", root.pid, display_name, memory_str);
+        print!("{:width$} {} {}", root.pid, display_name, memory_str, width = pid_width);
         
         // Display arguments if available
         if let Some(ref args) = root.args {
@@ -315,7 +355,7 @@ impl MemoryMonitor {
         let child_count = root.children.len();
         for (i, child_pid) in root.children.iter().enumerate() {
             if let Some(child) = self.processes.get(child_pid) {
-                self.print_tree(child, level + 1, i == child_count - 1, total_memory);
+                self.print_tree(child, level + 1, i == child_count - 1, total_memory, pid_width, name_width);
             }
         }
     }
@@ -424,7 +464,9 @@ impl MemoryMonitor {
                 
                 // Get the updated root process after marking highlights
                 if let Some(updated_root_process) = self.processes.get(&root_pid).cloned() {
-                    self.print_tree(&updated_root_process, 0, false, total_memory);
+                    // Calculate column widths for proper alignment
+                    let (pid_width, name_width) = self.calculate_column_widths(&updated_root_process);
+                    self.print_tree(&updated_root_process, 0, false, total_memory, pid_width, name_width);
                 }
                 
                 // Print summary
