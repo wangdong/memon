@@ -10,6 +10,7 @@ A memory monitor tool that analyzes memory usage of processes and their children
 - **Watch Mode**: Continuously monitor memory usage with automatic updates
 - **Colored Output**: Enhanced readability with color-coded memory usage (configurable)
 - **Smart Process Matching**: Flexible process name matching that handles truncated names and common executable extensions
+- **Process Arguments Display**: Show command line arguments for each process with visual indicators
 
 ## Installation
 
@@ -45,6 +46,9 @@ memon chrome
 # Analyze with verbose output
 memon chrome --verbose
 
+# Show process startup arguments with visual indicators
+memon chrome -v
+
 # Disable colored output
 memon chrome --no-color
 
@@ -61,7 +65,8 @@ memon --version
 ### Command Line Options
 
 - `PROCESS_NAME`: Name of the process to analyze (required)
-- `-v, --verbose`: Enable verbose output
+- `--verbose`: Enable verbose output
+- `-v, --show-args`: Display process startup arguments with visual indicators (green dot before PID, magnifying glass before arguments)
 - `--no-color`: Disable colored output
 - `-w, --watch <SECONDS>`: Watch mode - continuously update every N seconds
 - `-h, --help`: Print help information
@@ -71,6 +76,8 @@ memon --version
 
 Memon displays process information in a tree structure with the following format:
 
+### Basic Output (without -v flag)
+
 ```
 PID  PROCESS_NAME                              MEMORY   RANK
 ├─ 1234 chrome                                   2.5GB   🥇
@@ -78,15 +85,27 @@ PID  PROCESS_NAME                              MEMORY   RANK
 └─ 1236 chrome                                   1.2GB   🥉
 ```
 
+### Enhanced Output (with -v flag)
+
+```
+   PID  PROCESS_NAME                              MEMORY   COMMAND LINE ARGS
+├─ 🟢1234 chrome                                   2.5GB   🔍/usr/bin/google-chrome --enable-features   🥇
+├─ 🟢1235 chrome                                   1.8GB   🔍/usr/bin/google-chrome --incognito          🥈
+└─ 🟢1236 chrome                                   1.2GB   🔍/usr/bin/google-chrome --new-window          🥉
+```
+
 ### Output Elements
 
 - **PID**: Process ID
 - **PROCESS_NAME**: Process name (truncated to 40 characters)
 - **MEMORY**: Memory usage in human-readable format (MB/GB)
+- **COMMAND LINE ARGS**: Full command line arguments (only shown with -v flag)
 - **RANK**: Visual indicator for top 3 memory consumers:
   - 🥇 Highest memory usage
   - 🥈 Second highest memory usage
   - 🥉 Third highest memory usage
+- **🟢**: Green dot indicator shown before PID when using -v flag
+- **🔍**: Magnifying glass indicator shown before command line arguments when using -v flag
 
 ### Memory Highlighting
 
@@ -167,3 +186,10 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Colored output with memory ranking
 - Watch mode for continuous monitoring
 - Smart process name matching
+
+### Version 0.2.0
+
+- Added process startup arguments display with `-v` flag
+- Visual indicators: green dot (🟢) before PID and magnifying glass (🔍) before arguments
+- Changed verbose parameter to use `--verbose` (long option only)
+- Enhanced output formatting for better readability

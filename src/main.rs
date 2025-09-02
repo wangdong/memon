@@ -54,8 +54,12 @@ struct Args {
     process_name: String,
     
     /// Verbose output
-    #[clap(short, long)]
+    #[clap(long)]
     verbose: bool,
+    
+    /// Display process startup arguments
+    #[clap(short = 'v', long = "show-args")]
+    show_args: bool,
     
     /// Disable colored output
     #[clap(long)]
@@ -77,6 +81,7 @@ struct ProcessInfo {
     is_max_memory: bool,
     is_second_max_memory: bool,
     is_third_max_memory: bool,
+    args: Option<String>, // Command line arguments
 }
 
 impl ProcessInfo {
@@ -90,6 +95,7 @@ impl ProcessInfo {
             is_max_memory: false,
             is_second_max_memory: false,
             is_third_max_memory: false,
+            args: None,
         }
     }
     
@@ -102,16 +108,18 @@ impl ProcessInfo {
 struct MemoryMonitor {
     processes: HashMap<u32, ProcessInfo>,
     no_color: bool,
+    show_args: bool,
     system: System,
 }
 
 impl MemoryMonitor {
-    fn new(no_color: bool) -> Self {
+    fn new(no_color: bool, show_args: bool) -> Self {
         let mut system = System::new_all();
         system.refresh_all();
         MemoryMonitor {
             processes: HashMap::new(),
             no_color,
+            show_args,
             system,
         }
     }
@@ -131,7 +139,19 @@ impl MemoryMonitor {
             let rss = process.memory(); // Already in bytes
             let ppid = process.parent().map(|p| p.as_u32());
             
-            self.processes.insert(pid_value, ProcessInfo::new(pid_value, name, rss, ppid));
+            // Get command line arguments if show_args is enabled
+            let args = if self.show_args {
+                process.cmd().join(" ")
+            } else {
+                String::new()
+            };
+            
+            let mut proc_info = ProcessInfo::new(pid_value, name, rss, ppid);
+            if self.show_args && !args.is_empty() {
+                proc_info.args = Some(args);
+            }
+            
+            self.processes.insert(pid_value, proc_info);
         }
         
         Ok(())
@@ -224,8 +244,44 @@ impl MemoryMonitor {
         }
     }
     
+    // Calculate column widths for proper alignment
+    fn calculate_column_widths(&self, root: &ProcessInfo) -> (usize, usize) {
+        let mut max_pid_width = 0;
+        let mut max_name_width = 40; // Default minimum width
+        
+        // Collect all processes in the tree
+        let mut all_processes = Vec::new();
+        self.collect_all_processes_in_tree(root, &mut all_processes);
+        
+        // Find maximum PID width and process name width
+        for proc_info in &all_processes {
+            let pid_str = proc_info.pid.to_string();
+            max_pid_width = max_pid_width.max(pid_str.len());
+            
+            // Calculate actual display name width
+            let display_name = if proc_info.name.len() > 40 {
+                format!("{}...", &proc_info.name[..37])
+            } else {
+                proc_info.name.clone()
+            };
+            max_name_width = max_name_width.max(display_name.len());
+        }
+        
+        (max_pid_width, max_name_width)
+    }
+    
+    // Collect all processes in the tree for width calculation
+    fn collect_all_processes_in_tree(&self, root: &ProcessInfo, processes: &mut Vec<ProcessInfo>) {
+        processes.push(root.clone());
+        for &child_pid in &root.children {
+            if let Some(child) = self.processes.get(&child_pid) {
+                self.collect_all_processes_in_tree(child, processes);
+            }
+        }
+    }
+    
     // Print process tree with memory information
-    fn print_tree(&self, root: &ProcessInfo, level: usize, is_last: bool, total_memory: u64) {
+    fn print_tree(&self, root: &ProcessInfo, level: usize, is_last: bool, total_memory: u64, pid_width: usize, name_width: usize) {
         // Format the current node with colors
         let memory_str = self.get_colored_memory_str(root.rss, root.is_max_memory, root.is_second_max_memory, root.is_third_max_memory);
         
@@ -263,22 +319,43 @@ impl MemoryMonitor {
             ""
         };
         
-        // Truncate or pad process name to 40 characters
-        let display_name = if root.name.len() > 40 {
-            format!("{}...", &root.name[..37])
+        // Truncate or pad process name to dynamic width
+        let display_name = if root.name.len() > name_width {
+            if name_width > 3 {
+                format!("{}...", &root.name[..name_width-3])
+            } else {
+                "...".to_string()
+            }
         } else {
-            format!("{:40}", root.name)
+            format!("{:width$}", root.name, width = name_width)
         };
 
-        // Print process info with 40-character process name
-        println!("{}{} {} {}{}", 
-                 tree_prefix, root.pid, display_name, memory_str, rank_emoji);
+        // Print process info with dynamic column widths
+        print!("{}", tree_prefix);
+        
+        // Display green dot emoji before PID if show_args is enabled
+        if self.show_args {
+            print!("🟢");
+        }
+        
+        print!("{:width$} {} {}", root.pid, display_name, memory_str, width = pid_width);
+        
+        // Display arguments if available
+        if let Some(ref args) = root.args {
+            print!(" 🔍{}", args);
+        }
+        
+        // Display the rank emoji
+        print!("{}", rank_emoji);
+        
+        // Print new line
+        println!();
         
         // Print children
         let child_count = root.children.len();
         for (i, child_pid) in root.children.iter().enumerate() {
             if let Some(child) = self.processes.get(child_pid) {
-                self.print_tree(child, level + 1, i == child_count - 1, total_memory);
+                self.print_tree(child, level + 1, i == child_count - 1, total_memory, pid_width, name_width);
             }
         }
     }
@@ -387,7 +464,9 @@ impl MemoryMonitor {
                 
                 // Get the updated root process after marking highlights
                 if let Some(updated_root_process) = self.processes.get(&root_pid).cloned() {
-                    self.print_tree(&updated_root_process, 0, false, total_memory);
+                    // Calculate column widths for proper alignment
+                    let (pid_width, name_width) = self.calculate_column_widths(&updated_root_process);
+                    self.print_tree(&updated_root_process, 0, false, total_memory, pid_width, name_width);
                 }
                 
                 // Print summary
@@ -591,7 +670,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     
     // Create memory monitor and analyze
-    let mut monitor = MemoryMonitor::new(!colors::should_use_colors(args.no_color));
+    let mut monitor = MemoryMonitor::new(!colors::should_use_colors(args.no_color), args.show_args);
     let success = monitor.analyze_process_tree(&args.process_name)?;
     
     if !success {
