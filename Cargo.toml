@@ -8,3 +8,6 @@ description = "A memory monitor tool that analyzes memory usage of processes and
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
 sysinfo = "0.30"
+
+[dev-dependencies]
+tempfile = "3"
